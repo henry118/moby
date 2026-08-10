@@ -39,7 +39,8 @@ func getNVIDIADeviceDrivers() map[string]*deviceDriver {
 	var composite firstSuccessfulUpdater
 	nvidiaDrivers := make(map[string]*deviceDriver)
 
-	if _, err := exec.LookPath(nvidiaCDIHookExecutableName); err == nil {
+	if path, err := exec.LookPath(nvidiaCDIHookExecutableName); err == nil {
+		log.G(context.TODO()).WithField("path", path).Debug("Registering nvidia CDI device driver")
 		// Register a driver specific to CDI if present.
 		// This has no capabilities associated to not inadvertently match requests.
 		cdiDeviceDriver := &deviceDriver{
@@ -49,9 +50,12 @@ func getNVIDIADeviceDrivers() map[string]*deviceDriver {
 		}
 		nvidiaDrivers["nvidia.cdi"] = cdiDeviceDriver
 		composite = append(composite, cdiDeviceDriver.updateSpec)
+	} else {
+		log.G(context.TODO()).WithField("binary", nvidiaCDIHookExecutableName).WithError(err).Debug("nvidia CDI device driver not registered")
 	}
 
-	if _, err := exec.LookPath(nvidiaContainerRuntimeHookExecutableName); err == nil {
+	if path, err := exec.LookPath(nvidiaContainerRuntimeHookExecutableName); err == nil {
+		log.G(context.TODO()).WithField("path", path).Debug("Registering nvidia runtime-hook device driver")
 		// Register a driver specific to the nvidia-container-runtime-hook if present.
 		// This has no capabilities associated to not inadvertently match requests.
 		runtimeHookDeviceDriver := &deviceDriver{
@@ -59,6 +63,8 @@ func getNVIDIADeviceDrivers() map[string]*deviceDriver {
 		}
 		nvidiaDrivers["nvidia.runtime-hook"] = runtimeHookDeviceDriver
 		composite = append(composite, runtimeHookDeviceDriver.updateSpec)
+	} else {
+		log.G(context.TODO()).WithField("binary", nvidiaContainerRuntimeHookExecutableName).WithError(err).Debug("nvidia runtime-hook device driver not registered")
 	}
 
 	if len(nvidiaDrivers) == 0 {
@@ -85,16 +91,19 @@ type firstSuccessfulUpdater []func(*specs.Spec, *deviceInstance) error
 // updateSpec returns on the first successful spec update.
 func (us firstSuccessfulUpdater) updateSpec(s *specs.Spec, dev *deviceInstance) error {
 	var errs []error
-	for _, u := range us {
+	for i, u := range us {
 		if u == nil {
 			continue
 		}
 		if err := u(s, dev); err != nil {
+			log.G(context.TODO()).WithError(err).WithField("updaterIndex", i).Debug("nvidia spec updater failed, trying next")
 			errs = append(errs, err)
 			continue
 		}
 		if len(errs) > 0 {
-			log.G(context.TODO()).WithError(errors.Join(errs...)).Warning("Ignoring previous errors updating spec")
+			log.G(context.TODO()).WithError(errors.Join(errs...)).WithField("succeededAt", i).Warning("Ignoring previous errors updating spec")
+		} else {
+			log.G(context.TODO()).WithField("updaterIndex", i).Debug("nvidia spec updater succeeded")
 		}
 		return nil
 	}

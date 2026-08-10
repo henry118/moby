@@ -109,8 +109,10 @@ func (c *cdiHandler) injectCDIDevices(s *specs.Spec, dev *deviceInstance) error 
 		return nil
 	}
 
-	_, err := c.registry.InjectDevices(s, cdiDeviceNames...)
+	log.G(context.TODO()).WithField("devices", cdiDeviceNames).Debug("Injecting CDI devices into OCI spec")
+	unresolved, err := c.registry.InjectDevices(s, cdiDeviceNames...)
 	if err != nil {
+		log.G(context.TODO()).WithField("unresolved", unresolved).WithError(err).Debug("CDI InjectDevices failed")
 		if rerrs := c.getErrors(); rerrs != nil {
 			// We log the errors that may have been generated while refreshing the CDI registry.
 			// These may be due to malformed specifications or device name conflicts that could be
@@ -121,6 +123,7 @@ func (c *cdiHandler) injectCDIDevices(s *specs.Spec, dev *deviceInstance) error 
 		return fmt.Errorf("CDI device injection failed: %w", err)
 	}
 
+	log.G(context.TODO()).WithField("devices", cdiDeviceNames).Debug("CDI devices injected successfully")
 	return nil
 }
 
